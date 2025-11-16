@@ -13,31 +13,39 @@ use Yii;
  */
 class HistoryController extends Controller
 {
-    public static function Save(string $name,array $old, array $new, array $exclude=[]){
-        $old_data=$new;
-        foreach ($old as $k => $v){
-            $old_data[$k]=$v;
+    public static function Save(string $name,array $old, array $new,string $primaryKey, array $exclude=[]){
+        $old_data = $new;
+        foreach ($old as $k => $v) {
+            $old_data[$k] = $v;
         }
-        $identical=true;
-        foreach ($new as $k => $v){
-            if(!in_array($k, $exclude, false)){
-                if($old_data[$k] != $v){
-                    $identical=false;
-                }
+
+        $changed = [];
+
+        foreach ($new as $k => $v) {
+            if (in_array($k, $exclude, true)) {
+                continue;
+            }
+
+            $oldValue = $old_data[$k] ?? null;
+
+            if ($oldValue != $v) {
+                $changed[] = $k;
             }
         }
-        if($identical){
-            return true;
-        }else{
-            $model=new History();
-            $model->table_name = $name;
-            $model->record_id = $old_data['id'];
-            $model->change_date = date('Y-m-d H:i:s');
-            $model->user_id = Yii::$app->user->id;
-            $model->changes = Json::encode($old_data);
 
-            return $model->save();
+        if (empty($changed)) {
+            return true;
         }
+        
+        
+        $model = new History();
+        $model->table_name = $name;
+        $model->record_id = $old_data[$primaryKey];
+        $model->change_date = date('Y-m-d H:i:s');
+        $model->user_id = (Yii::$app instanceof \yii\console\Application) ? 0 : Yii::$app->user->id;
+        $model->changes = Json::encode($old_data);
+        $model->changed_attributes = Json::encode($changed);
+        return $model->save();
     }
     public static function List(string $name,int $record_id){
         $resp='<ul>';
@@ -55,8 +63,8 @@ class HistoryController extends Controller
         }
         return $resp;
     }
-    public static function View(int $record_id, int $id){
-        $record=History::find()->where(['id'=>$id,'record_id'=>$record_id])->one();
+    public static function View(int $id){
+        $record=History::findOne($id);
         return Json::decode($record->changes,true);
     }
 
@@ -70,11 +78,31 @@ class HistoryController extends Controller
         return $ok;
     }
 
-    public static function historyFind($model,$condition,$history,$id_attr){
-        $model_data=HistoryController::View($condition,$history);
+    public static function historyFind($model,$history,$id_attr){
+        $model_data=HistoryController::View($history);
         $model->load($model_data,'');
         $model->$id_attr=$model_data[$id_attr];
         return $model;
+    }
+
+    public static function searchByChanged($model, $filters = [], $atts = [], $idAttr = 'id')
+    {
+        $query = History::find()->andFilterWhere($filters);
+        foreach ($atts as $attr) {
+            $query->andFilterWhere(['like', 'changed_attributes', '"'.$attr.'"']);
+        }
+        $histories = $query->all();
+        $models = [];
+
+        foreach ($histories as $history) {
+            $m = new $model();
+            $data = Json::decode($history->changes, true);
+            $m->load($data, '');
+            $m->$idAttr = $data[$idAttr] ?? null;
+            $models[] = $m;
+        }
+
+        return $models;
     }
 
 }

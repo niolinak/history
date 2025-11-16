@@ -1,34 +1,36 @@
 Model.php:
+
 ```php
 
-    [[...,'history'], 'safe'],
-
-    public function getHistory(){return HistoryController::List(self::tableName(),($this->id?:Yii::$app->request->get('id')));}
-
-    public static function findOne($condition){
-        if($history=Yii::$app->request->get('history')){
-            $model = new self;
-            $model->load(HistoryController::View($condition,$history),'');
+    public function behaviors()
+    {
+        return [
+            'history' => [
+                'class' => \HistoryBehavior::class,
+                'ignoreAttributes' => ['created_at', 'updated_at'],
+                // 'primaryKey' => 'user_id', // якщо первинний ключ має іншу назву
+            ],
+        ];
+    }
+    
+    // або
+    public function behaviors()
+    {
+        return [
+            'history' => \HistoryBehavior::class,
+        ];
+    }
+    
+    // +
+    public static function findOne($condition)
+    {
+        if (!Yii::$app instanceof \yii\console\Application && $history = Yii::$app->request->get('history')) {
+            $class = static::class;
+            $model = new $class();
+            $model->load(HistoryController::View($condition, $history), '');
             return $model;
         }
         return parent::findOne($condition);
-    }
-
-    public function afterSave( $insert, $changedAttributes ){
-        parent::afterSave($insert, $changedAttributes );
-        if(!$insert){
-            HistoryController::Save(self::tableName(),$changedAttributes,$this->getAttributes(),[...skip...]);
-        }
-    }
-
-    public function beforeDelete()
-    {
-        if (parent::beforeDelete()) {
-            HistoryController::Delete(self::tableName(),$this->id);
-            return parent::beforeDelete();
-        } else {
-            return false;
-        }
     }
 
 
